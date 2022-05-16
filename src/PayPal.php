@@ -4,7 +4,7 @@
  *
  * @author willvin
  * @copyright MIT
- * @version 0.1
+ * @version 0.0.2
  * @since 2022-05-15
  */
 
@@ -15,15 +15,15 @@ namespace willvin\PayPal;
  * Communication protocol version
  * @var double
  */
-define('VERSION', '0.0.1');
+define('VERSION', '0.0.2');
 
 /**
  *
  * PayPal class to PPL system
  * @param string $function Method name
  * @param array $ARG POST parameters
- * $merchantId, $posId, $salt, $testMode = false
- * @return array array(INT Error code, ARRAY Result)
+ * $client_id, $secret, $testMode = false
+ * @return true
  */
 class PayPal
 {
@@ -100,11 +100,11 @@ class PayPal
 	private $payLink = '';
 
 	/**
-	 * Obcject constructor. Set initial parameters. https://developer.paypal.com/api/rest/authentication/
+	 * Object constructor. Set initial parameters. https://developer.paypal.com/api/rest/authentication/
 	 * @param string $client_id
 	 * @param string $secret
 	 * @param bool $testMode
-	 * @return bool
+	 * @return true
 	 */
 	public function __construct($client_id="", $secret="", $testMode = false)
 	{
@@ -114,13 +114,13 @@ class PayPal
 
 		$this->orderRequestGUID = $this->GuidV4();
 
-		return $this;
+		return true;
 	}
 
 	/**
 	 * Config initializer. Set initial parameters. https://developer.paypal.com/api/rest/authentication/
 	 * @param array $config ["client_id" => CLIENT_ID, "secret" => SECRET, "testMode" => true]
-	 * @return bool
+	 * @return true
 	 */
 	public function Initialize($config)
 	{
@@ -259,7 +259,7 @@ class PayPal
 
 		if (isset($result->status) && $result->status == 'CREATED' || isset($result->status) && $result->status == 'APPROVED') {
 			$this->orderID = $result->id;
-			$this->payLink = $result->id;
+			$this->payLink = $result->links[1]->href;
 			$return["success"] = true;
 			$return["data"] = $result;
 			$return["msg"] = "Order created successfully.";
@@ -271,21 +271,16 @@ class PayPal
 	}
 
 	/**
-	 * Use this function to redirect the user to payment page after order has been created. It is optional.
-	 * @return void
+	 * Use this function to get the paypal approval link after the order has been created. It is optional.
+	 * @return string PayPal link for approval
 	 */
-	public function RedirectClient()
+	public function GetApprovalLink()
 	{
-		if ($this->payLink) {
-			header("Location: ".$this->payLink);
-			die();
-		} else {
-			throw new \Exception("The redirect link is empty, please make sure you executed CreateOrder() with no errors before calling RedirectClient()");
-		}
+		return $this->payLink;
 	}
 
 	/**
-	 * Use this function to reset the postData, orderID and payLink class variables.
+	 * Use this function to reset the class variables, apart from client ID and client secret.
 	 * @return void
 	 */
 	public function Clear()
@@ -320,7 +315,7 @@ class PayPal
 	/**
 	 * Update PayPal order details. Read more here https://developer.paypal.com/docs/api/orders/v2/#orders_patch
 	 * @return (bool|null|string|object)[]
-	 * TODO: Working on updating orders.
+	 * TODO: Work on updating orders.
 	 */
 	private function UpdateOrder() // Patch request // v2/checkout/orders/:order_id
 	{
@@ -328,15 +323,21 @@ class PayPal
 	}
 
 	/**
-	 * Get PayPal order details.
+	 * Authorize PayPal payment order.
 	 * @return (bool|null|string|object)[]
 	 * TODO: Work on Authorize Payment Order.
 	 */
 	Private function AuthorizePaymentOrder()
 	{ 
 	}
-
-	public function CapturePaymentOrder()
+	
+	/**
+	 * Capture payment order after user approve the order.
+	 * @param bool $test Optional, used for PHPUnit Test.
+	 * @param mixed $data Optional, used for PHPUnit Test.
+	 * @return array
+	 */
+	public function CapturePaymentOrder($test=false, $data=null)
 	{
 		$return = ["success" => false, "data" => null, "msg" => null];
 		$headers = [
@@ -344,8 +345,13 @@ class PayPal
 			'Prefer: return=representation',
 			'PayPal-Request-Id: '.$this->orderRequestGUID
 		];
+		$result = null;
 
-		$result = $this->MakeRequest('v2/checkout/orders/'.$this->orderID.'/capture', null, $headers, "POST");
+		if (!$test) {
+			$result = $this->MakeRequest('v2/checkout/orders/'.$this->orderID.'/capture', null, $headers, "POST");
+		} else {
+			$result = json_decode($data);
+		}
 
 		if (isset($result->status) && $result->status == 'COMPLETED') {
 			$return["success"] = true;
@@ -400,7 +406,7 @@ class PayPal
 	}
 
 	/**
-	 * Check if a string is avalid json value.
+	 * Check if a string is a valid json data.
 	 * @param mixed $string
 	 * @return bool
 	 */
@@ -410,7 +416,7 @@ class PayPal
 	}
 
 	/**
-	 * @return array list of data to be sent to the PayPal API
+	 * @return array Get the data to be sent to the PayPal API
 	 */
 	public function GetPostData()
 	{
@@ -445,6 +451,19 @@ class PayPal
 	
 		// Output the 36 character UUID.
 		return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($data), 4));
+	}
+
+	/**
+	 * Function checks if client_id & client secret is set.
+	 * @return bool
+	 */
+	public function is_set(): bool
+	{
+		if (!empty($this->client_id) && !empty($this->secret)) {
+			return true;
+		} else {
+			return false;
+		}
 	}
 
 	/** 
