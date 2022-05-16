@@ -12,10 +12,10 @@ namespace willvin\PayPal;
 
 /**
  *
- * Communication protol version
+ * Communication protocol version
  * @var double
  */
-define('PPL_VERSION', '0.1');
+define('VERSION', '0.0.1');
 
 /**
  *
@@ -88,10 +88,16 @@ class PayPal
 	public $orderRequestGUID = '';
 
 	/**
-	 * Created order ID
+	 * Created order ID. 
 	 * @var string
 	 */
 	public $orderID = '';
+
+	/**
+	 * Created payment link. Contains the link to redirect the user for payment.
+	 * @var string 
+	 */
+	private $payLink = '';
 
 	/**
 	 * Obcject constructor. Set initial parameters. https://developer.paypal.com/api/rest/authentication/
@@ -113,7 +119,7 @@ class PayPal
 
 	/**
 	 * Config initializer. Set initial parameters. https://developer.paypal.com/api/rest/authentication/
-	 * @param array $config
+	 * @param array $config ["client_id" => CLIENT_ID, "secret" => SECRET, "testMode" => true]
 	 * @return bool
 	 */
 	public function Initialize($config)
@@ -152,7 +158,7 @@ class PayPal
 			$return["success"] = true;
 			$return["msg"] = "Access token gotten successfully.";
 		} else {
-			throw new Exception($result->error.". ".$result->error_description);
+			throw new \Exception($result->error.". ".$result->error_description);
 		}
 
 		return $return;
@@ -180,14 +186,14 @@ class PayPal
 			$return["success"] = true;
 			$return["msg"] = "Access token terminated successfully.";
 		} else {
-			throw new Exception($result->error.". ".$result->error_description);
+			throw new \Exception($result->error.". ".$result->error_description);
 		}
 
 		return $return;
 	}
 
 	/**
-	 * Get PayPal User info.
+	 * Get PayPal merchant info.
 	 * @return (bool|null|string|object)[]
 	 */
 	public function UserInfo()
@@ -201,7 +207,7 @@ class PayPal
 			$return["data"] = $result;
 			$return["msg"] = "User info gotten successfully.";
 		} else {
-			throw new Exception($result->name.". ".$result->message);
+			throw new \Exception($result->name.". ".$result->message);
 		}
 
 		return $return;
@@ -230,7 +236,7 @@ class PayPal
 			$return["data"] = $result;
 			$return["msg"] = "Client token gotten successfully.";
 		} else {
-			throw new Exception($result->error.". ".$result->error_description);
+			throw new \Exception($result->error.". ".$result->error_description);
 		}
 
 		return $return;
@@ -253,14 +259,40 @@ class PayPal
 
 		if (isset($result->status) && $result->status == 'CREATED' || isset($result->status) && $result->status == 'APPROVED') {
 			$this->orderID = $result->id;
+			$this->payLink = $result->id;
 			$return["success"] = true;
 			$return["data"] = $result;
 			$return["msg"] = "Order created successfully.";
 		} else {
-			throw new Exception($result->details->issue." ".$result->description);
+			throw new \Exception($result->details[0]->issue." ".$result->details[0]->description);
 		}
 
 		return $return;
+	}
+
+	/**
+	 * Use this function to redirect the user to payment page after order has been created. It is optional.
+	 * @return void
+	 */
+	public function RedirectClient()
+	{
+		if ($this->payLink) {
+			header("Location: ".$this->payLink);
+			die();
+		} else {
+			throw new \Exception("The redirect link is empty, please make sure you executed CreateOrder() with no errors before calling RedirectClient()");
+		}
+	}
+
+	/**
+	 * Use this function to reset the postData, orderID and payLink class variables.
+	 * @return void
+	 */
+	public function Clear()
+	{
+		$this->postData = "";
+		$this->orderID = "";
+		$this->payLink = "";
 	}
 	
 	/**
@@ -278,7 +310,7 @@ class PayPal
 			$return["data"] = $result;
 			$return["msg"] = "Order details gotten successfully.";
 		} else {
-			throw new Exception($result->details->issue." ".$result->description);
+			throw new \Exception($result->details[0]->issue." ".$result->details[0]->description);
 		}
 
 		return $return;
@@ -320,7 +352,7 @@ class PayPal
 			$return["data"] = $result;
 			$return["msg"] = "Order created successfully.";
 		} else {
-			throw new Exception($result->details->issue." ".$result->description);
+			throw new \Exception($result->details[0]->issue." ".$result->details[0]->description);
 		}
 
 		return $return;
@@ -328,12 +360,53 @@ class PayPal
 
 	/**
 	 * Set the post data you are sending to PayPal. Set parameters
-	 * @param array $postData
+	 * @param (array|object|json) $postData
 	 * @return void
 	 */
 	public function SetPostData($postData)
 	{
-		$this->postData = $postData;
+		if (is_array($postData)) {
+			$this->postData = $postData;
+		} else if(is_object($postData)) {
+			$this->postData = $this->object_to_array($postData);
+		} else {
+			if ($this->is_json($postData)) {
+				$this->postData = json_decode($postData, true);
+			} else {
+				throw new \Exception("The string parsed, is not a valid json string.");
+			}
+			
+			
+		}
+	}
+
+	/**
+	 * Convert object to array.
+	 * @param object $object 
+	 * @return array
+	 */
+	private function object_to_array($object)
+	{
+		if (is_array($object) || is_object($object))
+		{
+			$result = [];
+			foreach ($object as $key => $value)
+			{
+				$result[$key] = (is_array($value) || is_object($value)) ? $this->object_to_array($value) : $value;
+			}
+			return $result;
+		}
+		return $object;
+	}
+
+	/**
+	 * Check if a string is avalid json value.
+	 * @param mixed $string
+	 * @return bool
+	 */
+	private function is_json($string) {
+		json_decode($string);
+		return json_last_error() === JSON_ERROR_NONE;
 	}
 
 	/**
@@ -356,7 +429,7 @@ class PayPal
 	}
 
 	/**
-	 * Add value to request
+	 * Generate a version 4 GUID string.
 	 * @param mixed $data 
 	 * @return string
 	 */
@@ -375,6 +448,7 @@ class PayPal
 	}
 
 	/** 
+	 * Make request to the paypal REST ApI.
 	 * @param mixed $apiPath
 	 * @param array|null $postData
 	 * @param array|null $Header
@@ -426,8 +500,8 @@ class PayPal
 			curl_close($curl);
 	
 			return json_decode($response);
-		} catch(Exception $error) {
-			throw new Exception($error->getMessage());
+		} catch(\Exception $error) {
+			throw new \Exception($error->getMessage());
 		}
 	}
 }
